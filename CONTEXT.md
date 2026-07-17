@@ -65,4 +65,4 @@ A streaming chat-completion backend behind the `ModelProvider` protocol (plus `S
 
 ### Trigger
 
-A user gesture that schedules a Capture sample: *drag*, *multi-click*, *shift-click*, *shift-navigation*, *cmd-a*. No capture on plain typing, scroll, app switch, or single click.
+A user gesture that schedules a Capture sample: *drag*, *multi-click*, *shift-click*, *shift-navigation*, *cmd-a* — all held with **Option (⌥)**, which arms the gesture. The same gesture without Option performs ordinary selection in the source app and schedules no Capture. No capture on plain typing, scroll, app switch, or single click regardless of modifiers.

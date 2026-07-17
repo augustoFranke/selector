@@ -1,10 +1,11 @@
 APP_NAME := Selector
+BUNDLE_ID := dev.local.Selector
 CONFIGURATION := release
 BUNDLE_DIR := build/$(APP_NAME).app
 CONTENTS_DIR := $(BUNDLE_DIR)/Contents
 MACOS_DIR := $(CONTENTS_DIR)/MacOS
 
-.PHONY: app build run run-api clean
+.PHONY: app build run run-api reset-ax run-fresh clean
 
 app: build
 	mkdir -p "$(MACOS_DIR)"
@@ -31,6 +32,15 @@ run-api: app
 	@if [ -n "$$SELECTOR_GROQ_MODEL" ]; then launchctl setenv SELECTOR_GROQ_MODEL "$$SELECTOR_GROQ_MODEL"; fi
 	@if [ -n "$$SELECTOR_GROQ_VISION_MODEL" ]; then launchctl setenv SELECTOR_GROQ_VISION_MODEL "$$SELECTOR_GROQ_VISION_MODEL"; fi
 	open "$(BUNDLE_DIR)"
+
+# Wipes the (possibly stale) Accessibility grant so the next launch prompts
+# fresh. Only needed when System Settings shows Selector allowed but capture
+# stays untrusted — not on every rebuild, since the signing identity is stable.
+reset-ax:
+	-pkill -x $(APP_NAME)
+	tccutil reset Accessibility $(BUNDLE_ID)
+
+run-fresh: reset-ax run
 
 clean:
 	rm -rf .build build

@@ -247,6 +247,16 @@ final class ChatPanelController: NSObject {
         responseView.font = Friendly.rounded(12.5)
         responseView.textColor = .secondaryLabelColor
         responseView.textContainerInset = NSSize(width: 6, height: 6)
+        // Plain NSTextView() doesn't auto-track the enclosing NSScrollView's
+        // width; without this it lays out into a zero-width container and
+        // never paints, even though its string content is correct.
+        responseView.minSize = NSSize(width: 0, height: 0)
+        responseView.maxSize = NSSize(width: CGFloat.greatestFiniteMagnitude, height: CGFloat.greatestFiniteMagnitude)
+        responseView.isVerticallyResizable = true
+        responseView.isHorizontallyResizable = false
+        responseView.autoresizingMask = [.width]
+        responseView.textContainer?.widthTracksTextView = true
+        responseView.textContainer?.containerSize = NSSize(width: 0, height: CGFloat.greatestFiniteMagnitude)
         responseScroll.documentView = responseView
 
         inputField = NSTextField()

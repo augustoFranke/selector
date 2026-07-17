@@ -101,6 +101,7 @@ final class SelectionTracker {
     private var mouseDownLocation: CGPoint?
     private var mouseDraggedSinceDown = false
     private var mouseDownHadShift = false
+    private var mouseDownHadOption = false
     private var lastTrigger: String = "—"
     private var suppressFocusHideUntil: Date?
 
@@ -215,6 +216,7 @@ final class SelectionTracker {
         mouseDownLocation = lastPointerLocation
         mouseDraggedSinceDown = false
         mouseDownHadShift = flags.contains(.maskShift)
+        mouseDownHadOption = flags.contains(.maskAlternate)
         if overlay.containsAppKitPoint(lastPointerLocation) {
             return
         }
@@ -233,15 +235,21 @@ final class SelectionTracker {
         let dragged = mouseDraggedSinceDown
         let shiftClick = mouseDownHadShift
         let multiClick = clickCount >= 2
+        let optionArmed = mouseDownHadOption
         mouseDownLocation = nil
         mouseDraggedSinceDown = false
         mouseDownHadShift = false
+        mouseDownHadOption = false
+
+        // Option must be held for the gesture to count as a Trigger — plain
+        // selection stays silent, Option+selection arms Selector.
+        guard optionArmed else { return }
 
         let trigger: String?
         switch true {
-        case dragged:    trigger = "drag"
-        case multiClick: trigger = "multi-click(\(clickCount))"
-        case shiftClick: trigger = "shift-click"
+        case dragged:    trigger = "option-drag"
+        case multiClick: trigger = "option-multi-click(\(clickCount))"
+        case shiftClick: trigger = "option-shift-click"
         default:         trigger = nil
         }
 
@@ -255,15 +263,16 @@ final class SelectionTracker {
         let isArrowOrEnd = Self.isSelectionNavigationKey(keyCode)
         let shift = flags.contains(.maskShift)
         let command = flags.contains(.maskCommand)
+        let option = flags.contains(.maskAlternate)
 
-        if shift && isArrowOrEnd {
-            lastTrigger = "shift-nav"
+        if option && shift && isArrowOrEnd {
+            lastTrigger = "option-shift-nav"
             scheduleSelectionSample(after: Self.selectionDisplayDelay)
             return
         }
 
-        if command && keyCode == 0 { // Cmd+A
-            lastTrigger = "cmd-a"
+        if option && command && keyCode == 0 { // Option+Cmd+A
+            lastTrigger = "option-cmd-a"
             scheduleSelectionSample(after: Self.selectionDisplayDelay)
             return
         }

@@ -13,6 +13,7 @@ Selector is a native macOS contextual AI assistant: select text anywhere, click 
 - **Native AppKit**, no web shell.
 - **V1 never edits text in source apps.** Read-and-ask only.
 - **Tools stay app-controlled** (link fetch, screenshot, TTS); no model-callable tools yet.
+- **Triggers require Option (⌥) held.** Plain selection (drag, multi-click, shift-click, shift-nav, cmd-a) never shows the bubble; the same gesture with Option held arms it. Chosen over Control (collides with right-click) and Command (collides with editor multi-cursor); accepted tradeoff: Option+drag means column-select in Xcode/VS Code/Cursor/Sublime/BBEdit.
 - Pure logic (session routing, prompt build, URL detection) is unit-tested; the AX/event-tap layer is verified manually per the capture test plan in `docs/archive/PLAN1.md`.
 
 ## Milestones

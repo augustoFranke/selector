@@ -2,7 +2,9 @@
 
 Selector is a native macOS contextual AI assistant. Select text in any app and a small "✨ ask" bubble appears near the selection; clicking it opens an anchored chat panel. While the panel is open, new selections from any app stack into the same conversation (the **Selection Stack**), URLs found in selections are fetched as web context, screenshots can be attached, and answers can be read aloud.
 
-Capture is Accessibility-first (`kAXSelectedTextAttribute` + selection bounds), with a listen-only Quartz event tap as the trigger for deliberate selection gestures (drag, multi-click, shift-click, shift-navigation, Cmd-A) and a careful pasteboard fallback that restores the clipboard afterwards. Secure fields are skipped. Answers stream from Groq through a provider-agnostic model layer.
+Capture is Accessibility-first (`kAXSelectedTextAttribute` + selection bounds), with a listen-only Quartz event tap as the trigger for deliberate selection gestures (drag, multi-click, shift-click, shift-navigation, Cmd-A) held with **Option (⌥)** — the same gesture without Option just selects text normally and Selector stays silent. A careful pasteboard fallback restores the clipboard afterwards. Secure fields are skipped. Answers stream from Groq through a provider-agnostic model layer.
+
+Note: holding Option while drag-selecting switches to column/rectangular selection in some code editors (Xcode, VS Code/Cursor, Sublime, BBEdit) — a native macOS behavior, not a Selector bug. Use Option+multi-click or Option+Shift+Arrow in those apps instead.
 
 See `CONTEXT.md` for the domain glossary and `docs/ROADMAP.md` for direction.
 
