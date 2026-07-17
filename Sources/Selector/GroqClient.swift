@@ -1,53 +1,5 @@
 import Foundation
 
-enum GroqError: Error, LocalizedError {
-    case missingAPIKey
-    case http(status: Int, body: String)
-    case rateLimited(retryAfter: String?)
-    case transport(Error)
-    case decoding(String)
-    case cancelled
-
-    var errorDescription: String? {
-        switch self {
-        case .missingAPIKey:
-            return "GROQ_API_KEY is not set. Launch via `make run-api` with the env var exported."
-        case .http(let status, let body):
-            return "Groq API error \(status): \(body.prefix(240))"
-        case .rateLimited(let retryAfter):
-            if let r = retryAfter { return "Groq rate limit hit. Retry after \(r)s." }
-            return "Groq rate limit hit. Please wait and retry."
-        case .transport(let err):
-            return "Network error: \(err.localizedDescription)"
-        case .decoding(let detail):
-            return "Failed to parse Groq stream: \(detail)"
-        case .cancelled:
-            return "Request cancelled."
-        }
-    }
-}
-
-struct GroqImage {
-    let data: Data
-    let mimeType: String // e.g. "image/jpeg" or "image/png"
-
-    var dataURL: String {
-        "data:\(mimeType);base64,\(data.base64EncodedString())"
-    }
-}
-
-struct GroqMessage {
-    let role: String
-    let content: String
-    let images: [GroqImage]
-
-    init(role: String, content: String, images: [GroqImage] = []) {
-        self.role = role
-        self.content = content
-        self.images = images
-    }
-}
-
 final class GroqClient: NSObject, URLSessionDataDelegate {
     static let defaultModel = "llama-3.3-70b-versatile"
     static let defaultVisionModel = "meta-llama/llama-4-scout-17b-16e-instruct"
@@ -56,7 +8,9 @@ final class GroqClient: NSObject, URLSessionDataDelegate {
     static let endpoint = URL(string: "https://api.groq.com/openai/v1/chat/completions")!
     static let ttsEndpoint = URL(string: "https://api.groq.com/openai/v1/audio/speech")!
 
-    private let apiKey: String?
+    // Resolved per request (Keychain → env) so a key saved from the menu bar
+    // takes effect without relaunching.
+    private let apiKeyProvider: () -> String?
     private let model: String
     private let visionModel: String
     private let ttsModel: String
@@ -65,16 +19,15 @@ final class GroqClient: NSObject, URLSessionDataDelegate {
     private var activeTask: URLSessionDataTask?
     private var buffer = Data()
 
-    private var onDelta: ((String) -> Void)?
-    private var onDone: ((Result<Void, GroqError>) -> Void)?
+    private var onDeltaCallback: ((String) -> Void)?
+    private var onDoneCallback: ((Result<Void, ProviderError>) -> Void)?
 
-    init(apiKey: String? = ProcessInfo.processInfo.environment["GROQ_API_KEY"],
+    init(apiKeyProvider: @escaping () -> String? = SecretsStore.groqAPIKey,
          model: String = ProcessInfo.processInfo.environment["SELECTOR_GROQ_MODEL"] ?? GroqClient.defaultModel,
          visionModel: String = ProcessInfo.processInfo.environment["SELECTOR_GROQ_VISION_MODEL"] ?? GroqClient.defaultVisionModel,
          ttsModel: String = ProcessInfo.processInfo.environment["SELECTOR_GROQ_TTS_MODEL"] ?? GroqClient.defaultTTSModel,
          ttsVoice: String = ProcessInfo.processInfo.environment["SELECTOR_GROQ_TTS_VOICE"] ?? GroqClient.defaultTTSVoice) {
-        let trimmedKey = apiKey?.trimmingCharacters(in: .whitespacesAndNewlines)
-        self.apiKey = (trimmedKey?.isEmpty == false) ? apiKey : nil
+        self.apiKeyProvider = apiKeyProvider
         self.model = model
         self.visionModel = visionModel
         self.ttsModel = ttsModel
@@ -86,22 +39,28 @@ final class GroqClient: NSObject, URLSessionDataDelegate {
         self.session = URLSession(configuration: config, delegate: self, delegateQueue: OperationQueue())
     }
 
+    private var apiKey: String? {
+        guard let raw = apiKeyProvider()?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !raw.isEmpty else { return nil }
+        return raw
+    }
+
     var hasAPIKey: Bool { apiKey != nil }
     var modelName: String { model }
     var visionModelName: String { visionModel }
     var ttsModelName: String { ttsModel }
     var ttsVoiceName: String { ttsVoice }
 
-    func stream(messages: [GroqMessage],
+    func stream(messages: [ChatMessage],
                 onDelta: @escaping (String) -> Void,
-                onDone: @escaping (Result<Void, GroqError>) -> Void) {
+                onDone: @escaping (Result<Void, ProviderError>) -> Void) {
         guard let apiKey else {
             onDone(.failure(.missingAPIKey))
             return
         }
         cancel()
-        self.onDelta = onDelta
-        self.onDone = onDone
+        self.onDeltaCallback = onDelta
+        self.onDoneCallback = onDone
         self.buffer = Data()
 
         let hasImages = messages.contains { !$0.images.isEmpty }
@@ -130,7 +89,7 @@ final class GroqClient: NSObject, URLSessionDataDelegate {
         task.resume()
     }
 
-    private static func encodeMessage(_ message: GroqMessage) -> [String: Any] {
+    private static func encodeMessage(_ message: ChatMessage) -> [String: Any] {
         if message.images.isEmpty {
             return ["role": message.role, "content": message.content]
         }
@@ -150,10 +109,9 @@ final class GroqClient: NSObject, URLSessionDataDelegate {
     }
 
     /// One-shot, non-streaming Groq TTS call. Returns the audio bytes (WAV).
-    /// Returns the underlying `URLSessionDataTask` so the caller can cancel mid-flight.
     @discardableResult
     func synthesizeSpeech(text: String,
-                          completion: @escaping (Result<Data, GroqError>) -> Void) -> URLSessionDataTask? {
+                          completion: @escaping (Result<Data, ProviderError>) -> Void) -> CancellableRequest? {
         guard let apiKey else { completion(.failure(.missingAPIKey)); return nil }
         var req = URLRequest(url: GroqClient.ttsEndpoint)
         req.httpMethod = "POST"
@@ -243,7 +201,7 @@ final class GroqClient: NSObject, URLSessionDataDelegate {
                 let payload = line.dropFirst(5).trimmingCharacters(in: .whitespaces)
                 if payload == "[DONE]" { continue }
                 if let delta = parseDelta(payload) {
-                    DispatchQueue.main.async { [weak self] in self?.onDelta?(delta) }
+                    DispatchQueue.main.async { [weak self] in self?.onDeltaCallback?(delta) }
                 }
             }
         }
@@ -261,11 +219,14 @@ final class GroqClient: NSObject, URLSessionDataDelegate {
         return content
     }
 
-    private func finish(_ result: Result<Void, GroqError>) {
-        let cb = onDone
-        onDone = nil
-        onDelta = nil
+    private func finish(_ result: Result<Void, ProviderError>) {
+        let cb = onDoneCallback
+        onDoneCallback = nil
+        onDeltaCallback = nil
         activeTask = nil
         DispatchQueue.main.async { cb?(result) }
     }
 }
+
+extension GroqClient: ModelProvider {}
+extension GroqClient: SpeechProvider {}

@@ -150,9 +150,9 @@ final class ChatPanelController: NSObject {
 
     var isOpen: Bool { panel.isVisible }
 
-    init(session: AskSession) {
+    init(session: AskSession, speech: SpeechService) {
         self.session = session
-        self.speech = SpeechService(groq: session.groq)
+        self.speech = speech
 
         let panelWidth: CGFloat = 388
         let panelHeight: CGFloat = 340
@@ -591,9 +591,9 @@ final class ChatPanelController: NSObject {
     }
 
     private func renderResponsePlaceholder() {
-        let keyHint = session.groq.hasAPIKey
-            ? "hey 👋 — type below and I'll think it over.\nrunning on \(session.groq.modelName)."
-            : "I need a GROQ_API_KEY to come alive. relaunch with `make run-api`."
+        let keyHint = session.provider.hasAPIKey
+            ? "hey 👋 — type below and I'll think it over.\nrunning on \(session.provider.modelName)."
+            : "I need an API key to come alive. menu bar → Set Groq API Key…"
         responseView.string = keyHint
         responseView.font = Friendly.rounded(12.5)
         responseView.textColor = .secondaryLabelColor
@@ -746,8 +746,8 @@ final class ChatPanelController: NSObject {
         }
         let prompt = inputField.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !prompt.isEmpty else { return }
-        guard session.groq.hasAPIKey else {
-            setResponse("GROQ_API_KEY is not set. Launch the app via `make run-api` with the env var exported.", dim: true)
+        guard session.provider.hasAPIKey else {
+            setResponse("No API key configured. Use the menu bar → Set Groq API Key…, or launch via `make run-api` with GROQ_API_KEY exported.", dim: true)
             return
         }
         session.send(prompt: prompt)

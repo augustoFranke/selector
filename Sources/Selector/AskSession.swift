@@ -98,16 +98,16 @@ final class AskSession {
     /// Streaming delta arrived; latestAnswer already includes it.
     var onAnswerDelta: ((String) -> Void)?
     /// Stream finished (or errored).
-    var onAnswerFinished: ((Result<Void, GroqError>) -> Void)?
+    var onAnswerFinished: ((Result<Void, ProviderError>) -> Void)?
     /// The session was closed — the panel should hide.
     var onClosed: (() -> Void)?
 
     // MARK: Collaborators
 
-    let groq: GroqClient
+    let provider: ModelProvider
 
-    init(groq: GroqClient) {
-        self.groq = groq
+    init(provider: ModelProvider) {
+        self.provider = provider
     }
 
     // MARK: Capture-side intent
@@ -167,7 +167,7 @@ final class AskSession {
     func send(prompt: String) {
         let trimmed = prompt.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
-        guard groq.hasAPIKey else {
+        guard provider.hasAPIKey else {
             onAnswerFinished?(.failure(.missingAPIKey))
             return
         }
@@ -178,10 +178,10 @@ final class AskSession {
         onAnswerStarted?(trimmed)
 
         let messages = buildMessages(userPrompt: trimmed)
-        let activeModel = screenshots.isEmpty ? groq.modelName : groq.visionModelName
+        let activeModel = screenshots.isEmpty ? provider.modelName : provider.visionModelName
         Logger.log("AskSession.send model=\(activeModel) selections=\(selections.count) links=\(linkContexts.count) screenshots=\(screenshots.count) prompt=\(trimmed.count) chars")
 
-        groq.stream(
+        provider.stream(
             messages: messages,
             onDelta: { [weak self] chunk in
                 guard let self else { return }
@@ -199,7 +199,7 @@ final class AskSession {
 
     func cancelStream() {
         guard isStreaming else { return }
-        groq.cancel()
+        provider.cancel()
         isStreaming = false
     }
 
@@ -241,7 +241,7 @@ final class AskSession {
         }
     }
 
-    private func buildMessages(userPrompt: String) -> [GroqMessage] {
+    func buildMessages(userPrompt: String) -> [ChatMessage] {
         var blocks: [String] = []
         for (idx, sel) in selections.enumerated() {
             blocks.append("[Selection \(idx + 1) · source: \(sel.sourceApp)]\n\(sel.text)")
@@ -264,10 +264,10 @@ final class AskSession {
         let contextBlock = blocks.isEmpty ? "(no attachments)" : blocks.joined(separator: "\n\n")
         let system = "You are Selector, a concise macOS assistant. The user has captured one or more text selections from their apps, optionally with web context and/or screenshots. Use everything as the primary context for their instruction. Be brief unless asked to elaborate."
         let user = "Context:\n\(contextBlock)\n\nInstruction:\n\(userPrompt)"
-        let images = screenshots.map { GroqImage(data: $0.data, mimeType: $0.mimeType) }
+        let images = screenshots.map { ChatImage(data: $0.data, mimeType: $0.mimeType) }
         return [
-            GroqMessage(role: "system", content: system),
-            GroqMessage(role: "user", content: user, images: images)
+            ChatMessage(role: "system", content: system),
+            ChatMessage(role: "user", content: user, images: images)
         ]
     }
 }

@@ -2,10 +2,10 @@ import AVFoundation
 import Foundation
 
 final class SpeechService: NSObject {
-    private let groq: GroqClient
+    private let provider: SpeechProvider
     private let synth = AVSpeechSynthesizer()
     private var player: AVAudioPlayer?
-    private var currentTask: URLSessionDataTask?
+    private var currentTask: CancellableRequest?
 
     /// Called whenever speaking state flips. Always delivered on the main queue.
     var onStateChange: ((Bool) -> Void)?
@@ -20,8 +20,8 @@ final class SpeechService: NSObject {
         }
     }
 
-    init(groq: GroqClient) {
-        self.groq = groq
+    init(provider: SpeechProvider) {
+        self.provider = provider
         super.init()
         synth.delegate = self
     }
@@ -31,8 +31,8 @@ final class SpeechService: NSObject {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
 
-        if groq.hasAPIKey {
-            speakViaGroq(trimmed)
+        if provider.hasAPIKey {
+            speakViaProvider(trimmed)
         } else {
             speakViaSystem(trimmed)
         }
@@ -47,10 +47,10 @@ final class SpeechService: NSObject {
         isSpeaking = false
     }
 
-    private func speakViaGroq(_ text: String) {
+    private func speakViaProvider(_ text: String) {
         isSpeaking = true
-        Logger.log("TTS Groq begin (\(text.count) chars, voice=\(groq.ttsVoiceName))")
-        currentTask = groq.synthesizeSpeech(text: text) { [weak self] result in
+        Logger.log("TTS provider begin (\(text.count) chars, voice=\(provider.ttsVoiceName))")
+        currentTask = provider.synthesizeSpeech(text: text) { [weak self] result in
             guard let self else { return }
             DispatchQueue.main.async {
                 self.currentTask = nil
@@ -60,7 +60,7 @@ final class SpeechService: NSObject {
                 case .failure(.cancelled):
                     self.isSpeaking = false
                 case .failure(let err):
-                    Logger.log("TTS Groq failed (\(err.localizedDescription)); falling back to system voice")
+                    Logger.log("TTS provider failed (\(err.localizedDescription)); falling back to system voice")
                     self.speakViaSystem(text)
                 }
             }
@@ -77,7 +77,7 @@ final class SpeechService: NSObject {
                 player = nil
                 speakViaSystem("Playback failed.")
             } else {
-                Logger.log("TTS Groq playing (\(data.count) bytes)")
+                Logger.log("TTS provider playing (\(data.count) bytes)")
             }
         } catch {
             Logger.log("AVAudioPlayer init failed: \(error.localizedDescription); falling back to system voice")

@@ -1,27 +1,46 @@
 # Selector
 
-Selector is a native macOS prototype that watches the frontmost app for text selection changes and shows a floating `Ask ChatGPT` button near the start of the selected text.
+Selector is a native macOS contextual AI assistant. Select text in any app and a small "✨ ask" bubble appears near the selection; clicking it opens an anchored chat panel. While the panel is open, new selections from any app stack into the same conversation (the **Selection Stack**), URLs found in selections are fetched as web context, screenshots can be attached, and answers can be read aloud.
 
-It uses macOS Accessibility as the first source of selected text and selection bounds, with a listen-only Quartz event tap as a trigger to re-check after mouse and keyboard selection gestures. When Accessibility does not expose selected text, it briefly sends Command-C, reads plain text only if the pasteboard changed, restores the original pasteboard contents, and places the button near the pointer. The button appears 0.5 seconds after a selection trigger and is intentionally inert in this prototype.
+Capture is Accessibility-first (`kAXSelectedTextAttribute` + selection bounds), with a listen-only Quartz event tap as the trigger for deliberate selection gestures (drag, multi-click, shift-click, shift-navigation, Cmd-A) and a careful pasteboard fallback that restores the clipboard afterwards. Secure fields are skipped. Answers stream from Groq through a provider-agnostic model layer.
 
-## Build
+See `CONTEXT.md` for the domain glossary and `docs/ROADMAP.md` for direction.
+
+## Build & run
 
 ```sh
-make app
+make app    # builds and codesigns build/Selector.app
+make run    # builds, then launches the app
 ```
 
-The app bundle is created at `build/Selector.app`.
+Requires Xcode command line tools and an "Apple Development" signing identity.
+
+## API key
+
+Set your Groq API key from the menu bar: **◉ Selector → Set Groq API Key…** (stored in your login Keychain).
+
+For development, the environment variable fallback still works:
+
+```sh
+GROQ_API_KEY=gsk_… make run-api
+```
+
+Optional overrides: `SELECTOR_GROQ_MODEL`, `SELECTOR_GROQ_VISION_MODEL`, `SELECTOR_GROQ_TTS_MODEL`, `SELECTOR_GROQ_TTS_VOICE`.
 
 ## Permissions
 
-Selector needs Accessibility permission. Input Monitoring may also be requested by macOS because the prototype uses a listen-only event tap to notice global mouse and keyboard gestures.
+- **Accessibility** — required for selection capture. Approve the prompt on first launch, or add `build/Selector.app` under System Settings → Privacy & Security → Accessibility.
+- **Input Monitoring** — may be requested for the listen-only event tap.
+- **Screen Recording** — requested only the first time you use the screenshot button.
 
-If the app is not trusted yet, launch it once and approve it in System Settings. If macOS does not show a prompt automatically, add `build/Selector.app` manually in System Settings > Privacy & Security > Accessibility.
+## Tests
+
+```sh
+swift test
+```
+
+Covers the pure logic: Ask Session routing (idle → overlay, active → stack), prompt/context-block building, and dominant-URL detection. The Accessibility capture layer is verified manually (see the capture test matrix in `docs/archive/PLAN1.md`).
 
 ## Debugging
 
-Runtime notes are written to:
-
-```sh
-/tmp/selector.log
-```
+The menu bar item shows live capture debug state (source app, method, trigger, last failure). Runtime logs are written to `/tmp/selector.log`.

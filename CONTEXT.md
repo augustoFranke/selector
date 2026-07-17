@@ -59,6 +59,10 @@ The act of reading the user's current selection.
 
 Strategy: AX-first (`kAXSelectedTextAttribute`, `kAXSelectedTextRangeAttribute`, `kAXBoundsForRangeParameterizedAttribute`), with a careful pasteboard fallback gated to deliberate **Trigger** gestures and a restore-after step. Skips secure fields and Selector's own UI.
 
+### Model Provider
+
+A streaming chat-completion backend behind the `ModelProvider` protocol (plus `SpeechProvider` for TTS). The **Ask Session** talks only to the protocol; Groq is the first conformer. Keys resolve via `SecretsStore`: login Keychain first, environment variable fallback.
+
 ### Trigger
 
 A user gesture that schedules a Capture sample: *drag*, *multi-click*, *shift-click*, *shift-navigation*, *cmd-a*. No capture on plain typing, scroll, app switch, or single click.
