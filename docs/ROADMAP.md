@@ -2,6 +2,15 @@
 
 Single source of truth for direction. Supersedes `docs/archive/PLAN.md` and `docs/archive/PLAN1.md` (kept for history). Terms per `CONTEXT.md`.
 
+## Handoff notes (as of commit f99cbe1, 2026-07-17)
+
+Two fixes landed in this commit, build cleanly, and are running — but neither has been **visually re-confirmed in the app** by a human yet. Check both before starting new work; delete this section once confirmed.
+
+1. **Response text rendering** (`Sources/Selector/ChatPanel.swift`). The response `NSTextView` had zero width — missing the standard `NSScrollView` embedding config (`minSize`/`maxSize`/`autoresizingMask`/`textContainer.widthTracksTextView`), so streamed answers existed in the view's string (confirmed via live Accessibility inspection: the AX value had the full answer, but the view's AX frame was `size=(0,163)`) but never painted on screen. Fix adds that config. **To confirm:** open the chat panel, send a prompt, verify the streamed answer is actually visible, not just present.
+2. **Option-gated triggers** (`Sources/Selector/SelectionCapture.swift`). All Capture triggers (drag, multi-click, shift-click, shift-nav, cmd-a) now require Option (⌥) held; plain selection alone no longer shows the bubble. **To confirm:** plain drag/multi-click/shift-click select text with no bubble; Option+drag, Option+multi-click, Option+Shift+Arrow, Option+Cmd+A each show the bubble. Note Option+drag triggers column-select instead of normal selection in Xcode/VS Code/Cursor/Sublime/BBEdit — expected, not a bug (see Standing decisions).
+
+If both hold up, the capture-coverage pass in M1 below is the natural next step and doubles as broader confirmation of #2.
+
 ## Product thesis
 
 Selector is a native macOS contextual AI assistant: select text anywhere, click the bubble, ask. The defensible differentiator is the **Selection Stack** — collecting Selections from *multiple apps* into one question (doc + email + terminal error → one prompt). Single-selection "ask AI" is commoditized (Writing Tools, PopClip, Raycast); cross-app context assembly is not. The capture layer (AX-first + gated pasteboard fallback) is the accumulated engineering moat.
