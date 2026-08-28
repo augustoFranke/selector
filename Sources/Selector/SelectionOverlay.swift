@@ -1,24 +1,44 @@
 import Cocoa
 
-/// The Selection Overlay's hover-bubble background. A pill-shaped visual
-/// effect with a warm peach tint laid over it so the bubble reads as a friendly
-/// invitation instead of generic macOS chrome. Hover deepens the tint.
-final class BubbleContentView: NSVisualEffectView {
+/// The Selection Overlay's hover-bubble: a neutral glass capsule (Liquid Glass
+/// on macOS 26+, vibrancy fallback earlier) with an "Ask" label. Hover adds a
+/// subtle neutral highlight.
+final class BubbleContentView: NSView {
     var onClick: (() -> Void)?
-    private let tint = CALayer()
+    private let background: NSView
+    private let hoverView = NSView()
     private var trackingArea: NSTrackingArea?
-
-    private let restingAlpha: CGFloat = 0.18
-    private let hoverAlpha: CGFloat   = 0.32
-    private let warm = NSColor(srgbRed: 1.00, green: 0.61, blue: 0.36, alpha: 1.0)
+    private var hoverHighlight: CALayer? { hoverView.layer }
 
     override init(frame frameRect: NSRect) {
+        let (bg, host) = GlassSurface.make(cornerRadius: frameRect.height / 2)
+        background = bg
         super.init(frame: frameRect)
         wantsLayer = true
-        layer?.cornerCurve = .continuous
-        tint.backgroundColor = warm.withAlphaComponent(restingAlpha).cgColor
-        tint.actions = ["backgroundColor": NSNull()] // we'll opt in to animation manually
-        layer?.addSublayer(tint)
+
+        bg.frame = bounds
+        bg.autoresizingMask = [.width, .height]
+        addSubview(bg)
+
+        let label = NSTextField(labelWithString: "Ask")
+        label.font = .systemFont(ofSize: 13, weight: .semibold)
+        label.textColor = .labelColor
+        label.alignment = .center
+        label.translatesAutoresizingMaskIntoConstraints = false
+        host.addSubview(label)
+        NSLayoutConstraint.activate([
+            label.centerXAnchor.constraint(equalTo: host.centerXAnchor),
+            label.centerYAnchor.constraint(equalTo: host.centerYAnchor)
+        ])
+
+        // Topmost sibling view: a sublayer of our own layer would render
+        // beneath the glass subview.
+        hoverView.wantsLayer = true
+        hoverView.frame = bounds
+        hoverView.autoresizingMask = [.width, .height]
+        hoverView.layer?.backgroundColor = NSColor.clear.cgColor
+        hoverView.layer?.actions = ["backgroundColor": NSNull()] // we'll opt in to animation manually
+        addSubview(hoverView)
     }
 
     required init?(coder: NSCoder) { fatalError("init(coder:) not supported") }
@@ -26,10 +46,9 @@ final class BubbleContentView: NSVisualEffectView {
     override func layout() {
         super.layout()
         let radius = bounds.height / 2
-        layer?.cornerRadius = radius
-        tint.frame = bounds
-        tint.cornerRadius = radius
-        tint.cornerCurve = .continuous
+        GlassSurface.setCornerRadius(radius, on: background)
+        hoverHighlight?.cornerRadius = radius
+        hoverHighlight?.cornerCurve = .continuous
     }
 
     override func updateTrackingAreas() {
@@ -41,17 +60,19 @@ final class BubbleContentView: NSVisualEffectView {
         addTrackingArea(t); trackingArea = t
     }
 
-    override func mouseEntered(with event: NSEvent) { setTintAlpha(hoverAlpha) }
-    override func mouseExited(with event: NSEvent)  { setTintAlpha(restingAlpha) }
+    override func mouseEntered(with event: NSEvent) { setHighlightAlpha(0.08) }
+    override func mouseExited(with event: NSEvent)  { setHighlightAlpha(0) }
 
-    private func setTintAlpha(_ a: CGFloat) {
+    private func setHighlightAlpha(_ a: CGFloat) {
+        guard let highlight = hoverHighlight else { return }
+        let color = NSColor.labelColor.withAlphaComponent(a).cgColor
         let anim = CABasicAnimation(keyPath: "backgroundColor")
-        anim.fromValue = tint.backgroundColor
-        anim.toValue   = warm.withAlphaComponent(a).cgColor
+        anim.fromValue = highlight.backgroundColor
+        anim.toValue   = color
         anim.duration  = 0.14
         anim.timingFunction = CAMediaTimingFunction(name: .easeOut)
-        tint.backgroundColor = warm.withAlphaComponent(a).cgColor
-        tint.add(anim, forKey: "tint")
+        highlight.backgroundColor = color
+        highlight.add(anim, forKey: "highlight")
     }
 
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
@@ -67,34 +88,7 @@ final class SelectionOverlayController: NSObject {
     private var currentSelection: Selection?
 
     override init() {
-        // Friendlier wordmark: a sparkle glyph + "ask" in SF Rounded medium.
-        let labelText = "\u{2728} ask"
-        let label = NSTextField(labelWithString: labelText)
-        let roundedFont: NSFont = {
-            let base = NSFont.systemFont(ofSize: 13, weight: .semibold)
-            if let desc = base.fontDescriptor.withDesign(.rounded),
-               let f = NSFont(descriptor: desc, size: 13) { return f }
-            return base
-        }()
-        label.font = roundedFont
-        label.textColor = .labelColor
-        label.alignment = .center
-        label.translatesAutoresizingMaskIntoConstraints = false
-
-        let cv = BubbleContentView(frame: NSRect(x: 0, y: 0, width: 86, height: 34))
-        cv.material = .popover                // softer/warmer than .hudWindow
-        cv.blendingMode = .behindWindow
-        cv.state = .active
-        cv.wantsLayer = true
-        cv.layer?.masksToBounds = true        // cornerRadius set by layout()
-        cv.addSubview(label)
-
-        NSLayoutConstraint.activate([
-            label.leadingAnchor.constraint(equalTo: cv.leadingAnchor, constant: 12),
-            label.trailingAnchor.constraint(equalTo: cv.trailingAnchor, constant: -12),
-            label.centerYAnchor.constraint(equalTo: cv.centerYAnchor)
-        ])
-
+        let cv = BubbleContentView(frame: NSRect(x: 0, y: 0, width: 62, height: 32))
         contentView = cv
 
         panel = NSPanel(

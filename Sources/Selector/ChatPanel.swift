@@ -1,31 +1,5 @@
 import Cocoa
 
-// MARK: - Cozy Cantaloupe design system
-//
-// A small, opinionated palette + typography helper shared by the Chat Panel and
-// the Selection Overlay. The goal is a warm, sticky-note-pal feel: SF Rounded
-// type, a single peach accent, full pills for primary affordances, continuous
-// (squircle) corner curves.
-
-enum Friendly {
-    static let accent      = NSColor(srgbRed: 1.00, green: 0.61, blue: 0.36, alpha: 1.0)  // cantaloupe
-    static let accentSoft  = NSColor(srgbRed: 1.00, green: 0.61, blue: 0.36, alpha: 0.16)
-    static let lavender    = NSColor(srgbRed: 0.66, green: 0.58, blue: 0.94, alpha: 1.0)
-    static let lavenderBg  = NSColor(srgbRed: 0.66, green: 0.58, blue: 0.94, alpha: 0.14)
-    static let sky         = NSColor(srgbRed: 0.36, green: 0.66, blue: 0.94, alpha: 1.0)
-    static let skyBg       = NSColor(srgbRed: 0.36, green: 0.66, blue: 0.94, alpha: 0.14)
-    static let chipBg      = NSColor(srgbRed: 1.00, green: 0.96, blue: 0.91, alpha: 1.0)
-
-    static func rounded(_ size: CGFloat, _ weight: NSFont.Weight = .regular) -> NSFont {
-        let base = NSFont.systemFont(ofSize: size, weight: weight)
-        if let desc = base.fontDescriptor.withDesign(.rounded),
-           let f = NSFont(descriptor: desc, size: size) {
-            return f
-        }
-        return base
-    }
-}
-
 /// A rounded-corner button that paints a solid pill behind its title. Used for
 /// Send / Screenshot. Re-renders its attributed title whenever `title` changes
 /// so the toggle to "Stop" stays styled.
@@ -33,7 +7,7 @@ final class PillButton: NSButton {
     private let fill: NSColor
     private let textColor: NSColor
 
-    init(title: String, fill: NSColor, textColor: NSColor = .white, symbol: String? = nil) {
+    init(title: String, fill: NSColor, textColor: NSColor, symbol: String? = nil) {
         self.fill = fill
         self.textColor = textColor
         super.init(frame: .zero)
@@ -64,6 +38,14 @@ final class PillButton: NSButton {
         layer?.cornerRadius = bounds.height / 2
     }
 
+    // Layer colors resolve once; re-resolve when light/dark appearance flips.
+    override func viewDidChangeEffectiveAppearance() {
+        super.viewDidChangeEffectiveAppearance()
+        effectiveAppearance.performAsCurrentDrawingAppearance {
+            layer?.backgroundColor = fill.cgColor
+        }
+    }
+
     override var intrinsicContentSize: NSSize {
         var s = super.intrinsicContentSize
         s.width  += 18   // horizontal padding inside the pill
@@ -74,7 +56,7 @@ final class PillButton: NSButton {
     private func applyAttributedTitle() {
         guard !title.isEmpty else { attributedTitle = NSAttributedString(); return }
         attributedTitle = NSAttributedString(string: title, attributes: [
-            .font: Friendly.rounded(12.5, .semibold),
+            .font: NSFont.systemFont(ofSize: 12.5, weight: .semibold),
             .foregroundColor: textColor
         ])
     }
@@ -157,17 +139,8 @@ final class ChatPanelController: NSObject {
         let panelWidth: CGFloat = 388
         let panelHeight: CGFloat = 340
 
-        let content = NSVisualEffectView(frame: NSRect(x: 0, y: 0, width: panelWidth, height: panelHeight))
-        content.material = .popover           // softer/warmer than .hudWindow
-        content.blendingMode = .behindWindow
-        content.state = .active
-        content.wantsLayer = true
-        content.layer?.cornerRadius = 18
-        content.layer?.cornerCurve = .continuous
-        content.layer?.masksToBounds = true
-        // A whisper-thin warm hairline so the panel reads as hand-tinted, not generic chrome.
-        content.layer?.borderWidth = 1
-        content.layer?.borderColor = Friendly.accent.withAlphaComponent(0.14).cgColor
+        let (content, host) = GlassSurface.make(cornerRadius: 18)
+        content.frame = NSRect(x: 0, y: 0, width: panelWidth, height: panelHeight)
 
         let header = NSStackView()
         header.orientation = .horizontal
@@ -175,11 +148,11 @@ final class ChatPanelController: NSObject {
         header.spacing = 6
         header.translatesAutoresizingMaskIntoConstraints = false
 
-        // A small peach dot + wordmark — friendlier than a bare "Ask Selector".
-        // Pulses while a response is streaming (see setStreamingState).
+        // A small neutral dot + wordmark. Pulses while a response is streaming
+        // (see setStreamingState).
         let dot = NSView()
         dot.wantsLayer = true
-        dot.layer?.backgroundColor = Friendly.accent.cgColor
+        dot.layer?.backgroundColor = NSColor.tertiaryLabelColor.cgColor
         dot.layer?.cornerRadius = 4
         dot.translatesAutoresizingMaskIntoConstraints = false
         NSLayoutConstraint.activate([
@@ -188,19 +161,19 @@ final class ChatPanelController: NSObject {
         ])
         titleDot = dot
 
-        let title = NSTextField(labelWithString: "selector")
-        title.font = Friendly.rounded(13.5, .semibold)
+        let title = NSTextField(labelWithString: "Selector")
+        title.font = .systemFont(ofSize: 13, weight: .semibold)
         title.textColor = .labelColor
 
         let spacer = NSView()
         spacer.translatesAutoresizingMaskIntoConstraints = false
         spacer.setContentHuggingPriority(.defaultLow, for: .horizontal)
 
-        clearChipsButton = NSButton(title: "clear", target: nil, action: #selector(clearChipsTapped))
+        clearChipsButton = NSButton(title: "Clear", target: nil, action: #selector(clearChipsTapped))
         clearChipsButton.bezelStyle = .accessoryBarAction
         clearChipsButton.isBordered = false
-        clearChipsButton.attributedTitle = NSAttributedString(string: "clear", attributes: [
-            .font: Friendly.rounded(11, .medium),
+        clearChipsButton.attributedTitle = NSAttributedString(string: "Clear", attributes: [
+            .font: NSFont.systemFont(ofSize: 11, weight: .medium),
             .foregroundColor: NSColor.secondaryLabelColor
         ])
 
@@ -244,7 +217,7 @@ final class ChatPanelController: NSObject {
         responseView.isEditable = false
         responseView.isSelectable = true
         responseView.drawsBackground = false
-        responseView.font = Friendly.rounded(12.5)
+        responseView.font = .systemFont(ofSize: 12.5)
         responseView.textColor = .secondaryLabelColor
         responseView.textContainerInset = NSSize(width: 6, height: 6)
         // Plain NSTextView() doesn't auto-track the enclosing NSScrollView's
@@ -261,12 +234,14 @@ final class ChatPanelController: NSObject {
 
         inputField = NSTextField()
         inputField.translatesAutoresizingMaskIntoConstraints = false
-        inputField.placeholderString = "what's on your mind?"
-        inputField.font = Friendly.rounded(13)
+        inputField.placeholderString = "Ask anything…"
+        inputField.font = .systemFont(ofSize: 13)
         inputField.bezelStyle = .roundedBezel
         inputField.focusRingType = .default
 
-        sendButton = PillButton(title: "Send", fill: Friendly.accent)
+        sendButton = PillButton(title: "Send",
+                                fill: .labelColor,
+                                textColor: .windowBackgroundColor)
         sendButton.target = nil
         sendButton.action = #selector(sendTapped)
         sendButton.keyEquivalent = "\r"
@@ -299,13 +274,13 @@ final class ChatPanelController: NSObject {
         stack.alignment = .leading
         stack.spacing = 12
         stack.translatesAutoresizingMaskIntoConstraints = false
-        content.addSubview(stack)
+        host.addSubview(stack)
 
         NSLayoutConstraint.activate([
-            stack.topAnchor.constraint(equalTo: content.topAnchor, constant: 16),
-            stack.leadingAnchor.constraint(equalTo: content.leadingAnchor, constant: 16),
-            stack.trailingAnchor.constraint(equalTo: content.trailingAnchor, constant: -16),
-            stack.bottomAnchor.constraint(equalTo: content.bottomAnchor, constant: -16),
+            stack.topAnchor.constraint(equalTo: host.topAnchor, constant: 16),
+            stack.leadingAnchor.constraint(equalTo: host.leadingAnchor, constant: 16),
+            stack.trailingAnchor.constraint(equalTo: host.trailingAnchor, constant: -16),
+            stack.bottomAnchor.constraint(equalTo: host.bottomAnchor, constant: -16),
             header.leadingAnchor.constraint(equalTo: stack.leadingAnchor),
             header.trailingAnchor.constraint(equalTo: stack.trailingAnchor),
             chipsStack.leadingAnchor.constraint(equalTo: stack.leadingAnchor),
@@ -327,6 +302,8 @@ final class ChatPanelController: NSObject {
         panel.titleVisibility = .hidden
         panel.titlebarAppearsTransparent = true
         panel.isMovableByWindowBackground = true
+        panel.isOpaque = false
+        panel.backgroundColor = .clear
         panel.contentView = content
         panel.isFloatingPanel = true
         panel.level = .floating
@@ -424,8 +401,8 @@ final class ChatPanelController: NSObject {
         chipsStack.arrangedSubviews.forEach { $0.removeFromSuperview() }
 
         if session.attachments.isEmpty {
-            let empty = NSTextField(labelWithString: "nothing pinned yet — grab some text and I'll be ready ✨")
-            empty.font = Friendly.rounded(11.5)
+            let empty = NSTextField(labelWithString: "No context yet — select text in any app to add it.")
+            empty.font = .systemFont(ofSize: 11.5)
             empty.textColor = .tertiaryLabelColor
             empty.maximumNumberOfLines = 2
             empty.lineBreakMode = .byWordWrapping
@@ -450,29 +427,29 @@ final class ChatPanelController: NSObject {
 
     // MARK: Chip building blocks
 
-    private static func makeChipContainer(fill: NSColor, border: NSColor) -> NSView {
+    private static func makeChipContainer() -> NSView {
         let row = NSView()
         row.wantsLayer = true
         row.layer?.cornerRadius = 12
         row.layer?.cornerCurve = .continuous
-        row.layer?.backgroundColor = fill.cgColor
+        row.layer?.backgroundColor = NSColor.labelColor.withAlphaComponent(0.05).cgColor
         row.layer?.borderWidth = 1
-        row.layer?.borderColor = border.cgColor
+        row.layer?.borderColor = NSColor.labelColor.withAlphaComponent(0.08).cgColor
         row.translatesAutoresizingMaskIntoConstraints = false
         return row
     }
 
-    private static func makeChipBadge(text: String, color: NSColor) -> NSTextField {
+    private static func makeChipBadge(text: String) -> NSTextField {
         let badge = NSTextField(labelWithString: text)
-        badge.font = Friendly.rounded(10.5, .semibold)
-        badge.textColor = color
+        badge.font = .systemFont(ofSize: 10.5, weight: .semibold)
+        badge.textColor = .secondaryLabelColor
         badge.translatesAutoresizingMaskIntoConstraints = false
         return badge
     }
 
     private static func makeChipBody(text: String) -> NSTextField {
         let body = NSTextField(wrappingLabelWithString: text)
-        body.font = Friendly.rounded(12.5)
+        body.font = .systemFont(ofSize: 12.5)
         body.textColor = .labelColor
         body.maximumNumberOfLines = 2
         body.lineBreakMode = .byTruncatingTail
@@ -496,8 +473,8 @@ final class ChatPanelController: NSObject {
     }
 
     private func makeSelectionChipView(for selection: Selection) -> NSView {
-        let row = Self.makeChipContainer(fill: Friendly.chipBg, border: Friendly.accent.withAlphaComponent(0.18))
-        let source = Self.makeChipBadge(text: selection.sourceApp.lowercased(), color: Friendly.accent)
+        let row = Self.makeChipContainer()
+        let source = Self.makeChipBadge(text: selection.sourceApp)
         let preview = Self.makeChipBody(text: selection.text)
         let remove = makeChipRemoveButton(for: selection.id)
 
@@ -520,27 +497,23 @@ final class ChatPanelController: NSObject {
     }
 
     private func makeLinkChipView(for link: LinkContext) -> NSView {
-        let row = Self.makeChipContainer(fill: Friendly.skyBg, border: Friendly.sky.withAlphaComponent(0.22))
+        let row = Self.makeChipContainer()
 
         let badgeText: String
-        let badgeColor: NSColor
         let titleText: String
         switch link.status {
         case .fetching:
-            badgeText = "link · fetching\u{2026}"
-            badgeColor = .secondaryLabelColor
+            badgeText = "Link · fetching\u{2026}"
             titleText = link.url.absoluteString
         case .ok:
-            badgeText = "link · ready"
-            badgeColor = Friendly.sky
+            badgeText = "Link · ready"
             titleText = link.pageTitle ?? link.url.absoluteString
         case .failed(let reason):
-            badgeText = "link · couldn't fetch"
-            badgeColor = .systemOrange
+            badgeText = "Link · couldn't fetch"
             titleText = "\(link.url.absoluteString) — \(reason)"
         }
 
-        let badge = Self.makeChipBadge(text: badgeText, color: badgeColor)
+        let badge = Self.makeChipBadge(text: badgeText)
         let title = Self.makeChipBody(text: titleText)
 
         row.addSubview(badge)
@@ -559,8 +532,8 @@ final class ChatPanelController: NSObject {
     }
 
     private func makeScreenshotChipView(for shot: ScreenshotAttachment) -> NSView {
-        let row = Self.makeChipContainer(fill: Friendly.lavenderBg, border: Friendly.lavender.withAlphaComponent(0.22))
-        let badge = Self.makeChipBadge(text: "screenshot", color: Friendly.lavender)
+        let row = Self.makeChipContainer()
+        let badge = Self.makeChipBadge(text: "Screenshot")
 
         let thumb = NSImageView()
         thumb.image = NSImage(data: shot.data)
@@ -572,7 +545,7 @@ final class ChatPanelController: NSObject {
         thumb.translatesAutoresizingMaskIntoConstraints = false
 
         let meta = NSTextField(labelWithString: "\(shot.data.count / 1024) KB · \(shot.mimeType)")
-        meta.font = Friendly.rounded(11)
+        meta.font = .systemFont(ofSize: 11)
         meta.textColor = .secondaryLabelColor
         meta.translatesAutoresizingMaskIntoConstraints = false
 
@@ -602,10 +575,10 @@ final class ChatPanelController: NSObject {
 
     private func renderResponsePlaceholder() {
         let keyHint = session.provider.hasAPIKey
-            ? "hey 👋 — type below and I'll think it over.\nrunning on \(session.provider.modelName)."
-            : "I need an API key to come alive. menu bar → Set Groq API Key…"
+            ? "Ask a question about your selection."
+            : "Add an API key to get started: menu bar → Set Groq API Key…"
         responseView.string = keyHint
-        responseView.font = Friendly.rounded(12.5)
+        responseView.font = .systemFont(ofSize: 12.5)
         responseView.textColor = .secondaryLabelColor
     }
 
@@ -613,7 +586,7 @@ final class ChatPanelController: NSObject {
         responseView.textStorage?.append(NSAttributedString(
             string: chunk,
             attributes: [
-                .font: Friendly.rounded(12.5),
+                .font: NSFont.systemFont(ofSize: 12.5),
                 .foregroundColor: NSColor.labelColor
             ]
         ))
@@ -622,16 +595,16 @@ final class ChatPanelController: NSObject {
 
     private func setResponse(_ text: String, dim: Bool = false) {
         responseView.string = text
-        responseView.font = Friendly.rounded(12.5)
+        responseView.font = .systemFont(ofSize: 12.5)
         responseView.textColor = dim ? .secondaryLabelColor : .labelColor
     }
 
-    /// Compose the response area as a styled exchange: a small "you" tag in
-    /// peach, the question in body text, a thin separator, and a "selector"
-    /// tag the streamed answer flows below.
+    /// Compose the response area as a styled exchange: a small "you" tag,
+    /// the question in body text, and a "selector" tag the streamed answer
+    /// flows below.
     private func beginExchange(userPrompt: String) {
-        let body = Friendly.rounded(12.5)
-        let tag  = Friendly.rounded(10, .semibold)
+        let body = NSFont.systemFont(ofSize: 12.5)
+        let tag  = NSFont.systemFont(ofSize: 10, weight: .semibold)
         let para = NSMutableParagraphStyle()
         para.paragraphSpacing = 4
         para.lineSpacing = 1
@@ -639,7 +612,7 @@ final class ChatPanelController: NSObject {
         let attr = NSMutableAttributedString()
         attr.append(NSAttributedString(string: "YOU\n", attributes: [
             .font: tag,
-            .foregroundColor: Friendly.accent,
+            .foregroundColor: NSColor.secondaryLabelColor,
             .kern: 1.2,
             .paragraphStyle: para
         ]))
